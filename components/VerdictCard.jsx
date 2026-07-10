@@ -1,20 +1,21 @@
 "use client";
 
+/* ------------------------------------------------------------------ */
+/*  Confidence gauge (unchanged)                                        */
+/* ------------------------------------------------------------------ */
+
 function ConfidenceGauge({ value = 0 }) {
   const clamped = Math.max(0, Math.min(100, value));
 
-  // Gauge geometry: semi-circle from 180° (left) to 0° (right)
   const cx = 100, cy = 95, r = 72, strokeW = 14;
   const startAngle = 180;
   const totalSweep = 180;
 
-  // Helper to get point on arc
   const polarToCartesian = (angle) => {
     const rad = (angle * Math.PI) / 180;
     return { x: cx + r * Math.cos(rad), y: cy - r * Math.sin(rad) };
   };
 
-  // Build arc path
   const arcPath = (from, to) => {
     const s = polarToCartesian(from);
     const e = polarToCartesian(to);
@@ -23,18 +24,15 @@ function ConfidenceGauge({ value = 0 }) {
     return `M ${s.x} ${s.y} A ${r} ${r} 0 ${largeArc} 1 ${e.x} ${e.y}`;
   };
 
-  // Color stops: red (0%) → amber (50%) → green (100%)
   const getColor = (pct) => {
     if (pct <= 50) {
       const t = pct / 50;
-      // red → amber
       const rr = Math.round(239 + (240 - 239) * t);
       const g = Math.round(91 + (180 - 91) * t);
       const b = Math.round(91 + (41 - 91) * t);
       return `rgb(${rr},${g},${b})`;
     } else {
       const t = (pct - 50) / 50;
-      // amber → green
       const rr = Math.round(240 + (62 - 240) * t);
       const g = Math.round(180 + (207 - 180) * t);
       const b = Math.round(41 + (142 - 41) * t);
@@ -42,15 +40,9 @@ function ConfidenceGauge({ value = 0 }) {
     }
   };
 
-  // Filled arc angle
   const filledAngle = startAngle - (clamped / 100) * totalSweep;
-
-  // Needle angle (in CSS-rotation degrees: 0° = up)
   const needleRotation = -90 + (clamped / 100) * 180;
-
-  // Build gradient segments for the filled portion
   const segmentCount = 30;
-  const filledSweep = (clamped / 100) * totalSweep;
   const segments = [];
   const segsToRender = Math.max(1, Math.round((clamped / 100) * segmentCount));
 
@@ -75,7 +67,6 @@ function ConfidenceGauge({ value = 0 }) {
   return (
     <div className="confidence-gauge">
       <svg viewBox="0 0 200 110" className="gauge-svg">
-        {/* Background track */}
         <path
           d={arcPath(startAngle, 0)}
           fill="none"
@@ -83,9 +74,7 @@ function ConfidenceGauge({ value = 0 }) {
           strokeWidth={strokeW}
           strokeLinecap="round"
         />
-        {/* Colored filled segments */}
         {segments}
-        {/* Needle */}
         <g transform={`rotate(${needleRotation}, ${cx}, ${cy})`}>
           <line
             x1={cx} y1={cy} x2={cx} y2={cy - r + strokeW + 2}
@@ -96,7 +85,6 @@ function ConfidenceGauge({ value = 0 }) {
           <circle cx={cx} cy={cy} r="5" fill={gaugeColor} />
           <circle cx={cx} cy={cy} r="2.5" fill="var(--surface-2)" />
         </g>
-        {/* Center label */}
         <text
           x={cx} y={cy + 2}
           textAnchor="middle"
@@ -106,7 +94,6 @@ function ConfidenceGauge({ value = 0 }) {
         >
           {clamped}%
         </text>
-        {/* Min/Max labels */}
         <text x={cx - r - 2} y={cy + 14} textAnchor="middle" className="gauge-tick-label" fill="var(--text-dim)">0</text>
         <text x={cx + r + 2} y={cy + 14} textAnchor="middle" className="gauge-tick-label" fill="var(--text-dim)">100</text>
       </svg>
@@ -115,9 +102,231 @@ function ConfidenceGauge({ value = 0 }) {
   );
 }
 
-export default function VerdictCard({ decision, sources }) {
+/* ------------------------------------------------------------------ */
+/*  Report builder                                                      */
+/* ------------------------------------------------------------------ */
+
+/** Maps node names to their report key and section title. */
+const NODE_REPORT_MAP = [
+  { node: "fundamentals", key: "fundamentalsReport",  title: "Fundamentals Analysis" },
+  { node: "technical",    key: "technicalReport",     title: "Technical Analysis" },
+  { node: "sentiment",    key: "sentimentReport",     title: "Sentiment Analysis" },
+  { node: "bull",         key: "bullCase",            title: "Bull Case" },
+  { node: "bear",         key: "bearCase",            title: "Bear Case" },
+  { node: "riskManager",  key: "riskAssessment",      title: "Risk Assessment" },
+];
+
+function esc(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function buildPdfHtml({ companyInfo, updates, decision, sources }) {
+  const date = new Date().toLocaleDateString("en-GB", {
+    day: "2-digit", month: "long", year: "numeric",
+  });
+
+  const companyName = companyInfo?.companyName ?? "Unknown Company";
+  const ticker      = companyInfo?.ticker ?? "";
+  const price       = companyInfo?.quoteData?.price;
+  const change      = companyInfo?.quoteData?.change;
+  const changePct   = companyInfo?.quoteData?.changePercent;
+  const currency    = companyInfo?.quoteData?.currency ?? "USD";
+  const sym         = currency === "INR" ? "₹" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$";
+
+  const priceStr = price != null
+    ? `${sym}${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : "N/A";
+  const changeColor = change == null ? "#666" : change >= 0 ? "#3ecf8e" : "#ef5b5b";
+  const changeStr = change != null
+    ? `<span style="color:${changeColor};font-weight:600">${change >= 0 ? "+" : ""}${change.toFixed(2)} (${changePct != null ? `${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%` : ""})</span>`
+    : "";
+
+  // Collect report texts from update stream
+  const reportMap = {};
+  for (const u of updates ?? []) {
+    for (const { node, key } of NODE_REPORT_MAP) {
+      if (u.node === node && u.output?.[key]) {
+        reportMap[node] = u.output[key];
+      }
+    }
+  }
+
+  const verdictColor =
+    decision?.verdict?.toLowerCase() === "invest" ? "#3ecf8e" :
+    decision?.verdict?.toLowerCase() === "pass"   ? "#ef5b5b" : "#f0b429";
+
+  // Agent section blocks
+  const agentSections = NODE_REPORT_MAP
+    .filter(({ node }) => reportMap[node])
+    .map(({ node, title }) => `
+      <section class="section">
+        <h2>${esc(title)}</h2>
+        <div class="body-text">${esc(reportMap[node]).replace(/\n/g, "<br/>")}</div>
+      </section>`)
+    .join("");
+
+  // Sources
+  const sourcesHtml = Array.isArray(sources) && sources.length > 0
+    ? `<section class="section">
+        <h2>Sources</h2>
+        <ul class="sources">${sources.map(s =>
+          `<li><a href="${esc(s.url)}">${esc(s.label)}</a></li>`
+        ).join("")}</ul>
+      </section>`
+    : "";
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Research Report — ${esc(companyName)} (${esc(ticker)})</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      line-height: 1.65;
+      color: #1a1a2e;
+      background: #fff;
+      padding: 0;
+    }
+    .page { max-width: 760px; margin: 0 auto; padding: 48px 48px 64px; }
+    .report-header {
+      border-bottom: 3px solid #5b8cff;
+      padding-bottom: 20px;
+      margin-bottom: 28px;
+    }
+    .report-header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #0f0f1a;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+    .meta { font-size: 12px; color: #666; display: flex; gap: 20px; flex-wrap: wrap; margin-top: 8px; }
+    .meta span { display: flex; align-items: center; gap: 4px; }
+    .price-big { font-size: 26px; font-weight: 700; color: #0f0f1a; margin-top: 4px; }
+    .verdict-box {
+      background: #f8f9ff;
+      border: 1px solid #e0e4f0;
+      border-left: 4px solid ${verdictColor};
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-bottom: 28px;
+    }
+    .verdict-row { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
+    .verdict-badge {
+      font-size: 16px;
+      font-weight: 700;
+      color: ${verdictColor};
+      border: 2px solid ${verdictColor};
+      padding: 4px 14px;
+      border-radius: 6px;
+      letter-spacing: 0.04em;
+    }
+    .confidence { font-size: 13px; color: #555; }
+    .confidence strong { color: #0f0f1a; }
+    .section { margin-bottom: 28px; page-break-inside: avoid; }
+    .section h2 {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #5b8cff;
+      border-bottom: 1px solid #e8ecf8;
+      padding-bottom: 6px;
+      margin-bottom: 10px;
+    }
+    .section h3 {
+      font-size: 12px;
+      font-weight: 600;
+      color: #333;
+      margin: 12px 0 4px;
+    }
+    .body-text { color: #2a2a3e; font-size: 13px; line-height: 1.7; white-space: pre-wrap; }
+    .risk-list { padding-left: 18px; color: #2a2a3e; }
+    .risk-list li { margin-bottom: 4px; }
+    .sources { padding-left: 18px; }
+    .sources li { margin-bottom: 4px; }
+    .sources a { color: #5b8cff; text-decoration: none; font-size: 12px; }
+    .disclaimer {
+      margin-top: 32px;
+      padding-top: 16px;
+      border-top: 1px solid #e0e4f0;
+      font-size: 11px;
+      color: #999;
+      line-height: 1.6;
+    }
+    @media print {
+      body { font-size: 12px; }
+      .page { padding: 0; max-width: 100%; }
+      .report-header { page-break-after: avoid; }
+      .section { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="report-header">
+      <h1>Investment Research Report</h1>
+      <div class="price-big">${esc(companyName)} <span style="font-size:15px;font-weight:600;color:#5b8cff">${esc(ticker)}</span></div>
+      <div class="meta">
+        <span>📅 ${esc(date)}</span>
+        <span>💰 ${esc(priceStr)} ${changeStr}</span>
+      </div>
+    </div>
+
+    ${decision ? `
+    <div class="verdict-box">
+      <div class="verdict-row">
+        <span class="verdict-badge">${esc(decision.verdict)}</span>
+        <span class="confidence">Confidence: <strong>${decision.confidence}%</strong></span>
+      </div>
+      ${decision.reasoning ? `<h3>Reasoning</h3><p class="body-text">${esc(decision.reasoning)}</p>` : ""}
+      ${Array.isArray(decision.keyRisks) && decision.keyRisks.length > 0 ? `
+        <h3>Key Risks</h3>
+        <ul class="risk-list">${decision.keyRisks.map(r => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+      ${decision.whatWouldChangeOurMind ? `
+        <h3>What Would Change Our Mind</h3>
+        <p class="body-text">${esc(decision.whatWouldChangeOurMind)}</p>` : ""}
+    </div>` : ""}
+
+    ${agentSections}
+    ${sourcesHtml}
+
+    <p class="disclaimer">This is an AI-generated research output for a portfolio/demo project, not financial advice. Real investing decisions should involve a licensed financial advisor and your own due diligence.</p>
+  </div>
+  <script>window.onload = () => window.print();<\/script>
+</body>
+</html>`;
+}
+
+function openPdf(html) {
+  const win = window.open("", "_blank");
+  if (!win) return;
+  win.document.write(html);
+  win.document.close();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main export                                                         */
+/* ------------------------------------------------------------------ */
+
+export default function VerdictCard({ decision, sources, updates, companyInfo }) {
   if (!decision) return null;
   const verdictClass = (decision.verdict || "").toLowerCase();
+
+  const ticker = companyInfo?.ticker ?? "report";
+  const safeName = ticker.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
+
+  function handleDownload() {
+    const html = buildPdfHtml({ companyInfo, updates, decision, sources });
+    openPdf(html);
+  }
 
   return (
     <div className="verdict-card">
@@ -161,6 +370,20 @@ export default function VerdictCard({ decision, sources }) {
           </div>
         </div>
       )}
+
+      {/* Download report */}
+      <button
+        id="download-report-btn"
+        className="download-btn"
+        onClick={handleDownload}
+        title="Open a print-ready PDF of the full committee report"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M8 1v9M4 7l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M2 12h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+        </svg>
+        Download report (PDF)
+      </button>
 
       <p className="disclaimer">
         This is an AI-generated research output for a portfolio/demo project, not financial advice.

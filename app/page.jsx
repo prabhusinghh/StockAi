@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import CompanyForm from "../components/CompanyForm";
+import CompanyHeader from "../components/CompanyHeader";
 import AgentStream from "../components/AgentStream";
 import VerdictCard from "../components/VerdictCard";
 
@@ -12,6 +13,7 @@ export default function HomePage() {
   const [decision, setDecision] = useState(null);
   const [sources, setSources] = useState([]);
   const [error, setError] = useState(null);
+  const [companyInfo, setCompanyInfo] = useState(null);
   const abortRef = useRef(null);
 
   async function runResearch() {
@@ -20,6 +22,7 @@ export default function HomePage() {
     setDecision(null);
     setSources([]);
     setError(null);
+    setCompanyInfo(null);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -64,6 +67,15 @@ export default function HomePage() {
 
           if (payload.type === "node_update") {
             setUpdates((prev) => [...prev, payload]);
+
+            // Extract company info from the resolveTicker event
+            if (payload.node === "resolveTicker" && payload.output) {
+              setCompanyInfo({
+                companyName: payload.output.companyLongName,
+                ticker: payload.output.ticker,
+                quoteData: payload.output.quoteData ?? null,
+              });
+            }
           } else if (payload.type === "complete") {
             setDecision(payload.decision);
             setSources(payload.sources ?? []);
@@ -94,6 +106,14 @@ export default function HomePage() {
 
       {error && <div className="error-banner">{error}</div>}
 
+      {companyInfo && (
+        <CompanyHeader
+          companyName={companyInfo.companyName}
+          ticker={companyInfo.ticker}
+          quoteData={companyInfo.quoteData}
+        />
+      )}
+
       <AgentStream updates={updates} />
 
       {running && updates.length < 8 && (
@@ -105,7 +125,7 @@ export default function HomePage() {
         </div>
       )}
 
-      <VerdictCard decision={decision} sources={sources} />
+      <VerdictCard decision={decision} sources={sources} updates={updates} companyInfo={companyInfo} />
     </main>
   );
 }

@@ -10,7 +10,7 @@ function sseEvent(payload) {
 // label them. Keeps the route from dumping raw internal data (like full
 // price history arrays) into the stream.
 const NODE_OUTPUT_KEYS = {
-  resolveTicker: ["ticker", "companyLongName", "tickerMatched"],
+  resolveTicker: ["ticker", "companyLongName", "tickerMatched", "quoteData"],
   fundamentals: ["fundamentalsReport", "fundamentalsData"],
   technical: ["technicalReport", "technicalsData"],
   sentiment: ["sentimentReport", "newsData"],
