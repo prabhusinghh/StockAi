@@ -1,6 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
+
+// StockChart uses the DOM (lightweight-charts), so we only ever render it
+// on the client. next/dynamic with ssr:false prevents the SSR crash.
+const StockChart = dynamic(() => import("./StockChart"), { ssr: false });
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -214,6 +219,19 @@ function AgentCard({ node, label, output }) {
       {/* Expanded body */}
       {expanded && (
         <div className="agent-card-expanded-body">
+          {/* Candlestick chart — only for the technical analyst node */}
+          {node === "technical" && output.technicalsData?.ohlcv?.length > 0 && (
+            <StockChart
+              ohlcv={output.technicalsData.ohlcv}
+              sma20Line={output.technicalsData.sma20Line ?? []}
+              sma50Line={output.technicalsData.sma50Line ?? []}
+              high6mo={output.technicalsData.high6mo}
+              low6mo={output.technicalsData.low6mo}
+              latestClose={output.technicalsData.latestClose}
+              ticker={output.technicalsData.ticker}
+            />
+          )}
+
           <div className="agent-card-body">{report}</div>
 
           {rawData && (

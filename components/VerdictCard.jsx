@@ -66,7 +66,7 @@ function ConfidenceGauge({ value = 0 }) {
 
   return (
     <div className="confidence-gauge">
-      <svg viewBox="0 0 200 110" className="gauge-svg">
+      <svg viewBox="0 0 200 132" className="gauge-svg">
         <path
           d={arcPath(startAngle, 0)}
           fill="none"
@@ -85,8 +85,9 @@ function ConfidenceGauge({ value = 0 }) {
           <circle cx={cx} cy={cy} r="5" fill={gaugeColor} />
           <circle cx={cx} cy={cy} r="2.5" fill="var(--surface-2)" />
         </g>
+        {/* % label sits BELOW the needle pivot so it never overlaps */}
         <text
-          x={cx} y={cy + 2}
+          x={cx} y={cy + 22}
           textAnchor="middle"
           dominantBaseline="hanging"
           className="gauge-value"
@@ -94,10 +95,10 @@ function ConfidenceGauge({ value = 0 }) {
         >
           {clamped}%
         </text>
-        <text x={cx - r - 2} y={cy + 14} textAnchor="middle" className="gauge-tick-label" fill="var(--text-dim)">0</text>
-        <text x={cx + r + 2} y={cy + 14} textAnchor="middle" className="gauge-tick-label" fill="var(--text-dim)">100</text>
+        <text x={cx - r - 2} y={cy + 26} textAnchor="middle" className="gauge-tick-label" fill="var(--text-dim)">0</text>
+        <text x={cx + r + 2} y={cy + 26} textAnchor="middle" className="gauge-tick-label" fill="var(--text-dim)">100</text>
       </svg>
-      <span className="gauge-caption">Confidence</span>
+      {/* caption removed — VerdictCard renders confidence-band + confidence-hint instead */}
     </div>
   );
 }
@@ -313,15 +314,55 @@ function openPdf(html) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Verdict explanation helper                                           */
+/* ------------------------------------------------------------------ */
+
+const VERDICT_META = {
+  invest: {
+    icon: "▲",
+    label: "Invest",
+    meaning: "The committee sees a positive risk/reward at current levels — evidence tilts in favour of entering a position.",
+    color: "var(--green)",
+    bg: "rgba(62,207,142,0.08)",
+    border: "rgba(62,207,142,0.25)",
+  },
+  watch: {
+    icon: "◆",
+    label: "Watch",
+    meaning: "Evidence is too mixed or thin to commit. Add to your watchlist and wait for a clearer signal before acting.",
+    color: "var(--amber)",
+    bg: "rgba(240,180,41,0.08)",
+    border: "rgba(240,180,41,0.25)",
+  },
+  pass: {
+    icon: "▼",
+    label: "Pass",
+    meaning: "The committee sees unfavourable risk/reward — fundamental, technical, or sentiment concerns outweigh the upside.",
+    color: "var(--red)",
+    bg: "rgba(239,91,91,0.08)",
+    border: "rgba(239,91,91,0.25)",
+  },
+};
+
+function confidenceBand(pct) {
+  if (pct >= 85) return { label: "Very high conviction", color: "var(--green)" };
+  if (pct >= 70) return { label: "High conviction",      color: "var(--green)" };
+  if (pct >= 55) return { label: "Moderate conviction",  color: "var(--amber)" };
+  if (pct >= 40) return { label: "Low conviction",       color: "var(--amber)" };
+  return              { label: "Very low conviction",    color: "var(--red)"   };
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main export                                                         */
 /* ------------------------------------------------------------------ */
 
 export default function VerdictCard({ decision, sources, updates, companyInfo }) {
   if (!decision) return null;
-  const verdictClass = (decision.verdict || "").toLowerCase();
+  const verdictKey = (decision.verdict || "watch").toLowerCase();
+  const meta = VERDICT_META[verdictKey] ?? VERDICT_META.watch;
+  const band = confidenceBand(decision.confidence ?? 0);
 
   const ticker = companyInfo?.ticker ?? "report";
-  const safeName = ticker.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
 
   function handleDownload() {
     const html = buildPdfHtml({ companyInfo, updates, decision, sources });
@@ -330,9 +371,47 @@ export default function VerdictCard({ decision, sources, updates, companyInfo })
 
   return (
     <div className="verdict-card">
+
+      {/* ── Top row: badge + gauge ── */}
       <div className="verdict-top">
-        <span className={`verdict-badge ${verdictClass}`}>{decision.verdict}</span>
-        <ConfidenceGauge value={decision.confidence} />
+        <div className="verdict-badge-wrap">
+          <span className={`verdict-badge ${verdictKey}`}>
+            <span className="verdict-badge-icon">{meta.icon}</span>
+            {meta.label}
+          </span>
+          {/* Plain-English explanation of the verdict */}
+          <p className="verdict-meaning">{meta.meaning}</p>
+        </div>
+
+        <div className="verdict-gauge-col">
+          <ConfidenceGauge value={decision.confidence} />
+          <span className="confidence-band" style={{ color: band.color }}>
+            {band.label}
+          </span>
+          <span className="confidence-hint">
+            How strongly the 5-agent committee agreed
+          </span>
+        </div>
+      </div>
+
+      {/* ── Confidence scale legend ── */}
+      <div className="confidence-scale">
+        <span className="cs-label">Confidence scale</span>
+        <div className="cs-bars">
+          {[
+            { range: "0–39%",   label: "Contradictory / thin data", color: "var(--red)"   },
+            { range: "40–54%",  label: "Mixed signals",             color: "var(--red)"   },
+            { range: "55–69%",  label: "Leaning one way",           color: "var(--amber)" },
+            { range: "70–84%",  label: "Clear alignment",           color: "var(--amber)" },
+            { range: "85–100%", label: "Near-unanimous",            color: "var(--green)" },
+          ].map((b) => (
+            <div key={b.range} className="cs-bar-item">
+              <span className="cs-dot" style={{ background: b.color }} />
+              <span className="cs-range">{b.range}</span>
+              <span className="cs-desc">{b.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="verdict-section">
@@ -387,7 +466,7 @@ export default function VerdictCard({ decision, sources, updates, companyInfo })
 
       <p className="disclaimer">
         This is an AI-generated research output for a portfolio/demo project, not financial advice.
-        Confidence reflects agreement across the committee's data, not a guarantee of outcome —
+        Confidence reflects agreement across the committee&apos;s data, not a guarantee of outcome —
         real investing decisions should involve a licensed financial advisor and your own due diligence.
       </p>
     </div>
