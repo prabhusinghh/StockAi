@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "AI Investment Research Agent",
+  title: "StockAI",
   description: "A multi-agent committee that researches a company and decides invest / pass / watch.",
 };
 

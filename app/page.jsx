@@ -94,7 +94,7 @@ export default function HomePage() {
   return (
     <main className="container">
       <div className="header">
-        <h1>AI Investment Research Agent</h1>
+        <h1>StockAI - AI Investment Research Agent</h1>
         <p>
           A committee of specialist agents — fundamentals, technical, and sentiment analysts, a bull
           researcher, a bear researcher, and a risk manager — debate a company before a portfolio
