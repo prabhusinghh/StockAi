@@ -1,6 +1,7 @@
 import { buildResearchGraph, NODE_LABELS } from "../../../lib/agents/graph.js";
 
 export const runtime = "nodejs"; // LangChain/Anthropic SDKs need the Node runtime, not Edge.
+export const maxDuration = 60; // Prevent Vercel Hobby tier from timing out (default is 15s)
 
 function sseEvent(payload) {
   return `data: ${JSON.stringify(payload)}\n\n`;
